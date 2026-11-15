@@ -1,0 +1,1557 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>BALLOON POP – PECAHKAN BALON PINTAR (IPAS Kelas 4 SD)</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Google Fonts: Fredoka & Nunito untuk tampilan ceria & mudah dibaca siswa SD -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@600;700;800&display=swap" rel="stylesheet">
+
+  <!-- MediaPipe Hands & Camera Utils CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+  <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+
+  <style>
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    body {
+      font-family: 'Nunito', sans-serif;
+      margin: 0;
+      padding: 0;
+      overflow: hidden;
+      background: linear-gradient(180deg, #38bdf8 0%, #7dd3fc 50%, #e0f2fe 100%);
+      height: 100vh;
+      width: 100vw;
+    }
+
+    h1, h2, h3, .font-display {
+      font-family: 'Fredoka', sans-serif;
+    }
+
+    /* Animasi tombol melompat & berdenyut lembut */
+    @keyframes floatSlow {
+      0%, 100% { transform: translateY(0px); }
+      50% { transform: translateY(-8px); }
+    }
+    .animate-float {
+      animation: floatSlow 3.2s ease-in-out infinite;
+    }
+
+    @keyframes pulseGlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(250, 204, 21, 0.7); }
+      50% { box-shadow: 0 0 0 12px rgba(250, 204, 21, 0); }
+    }
+    .btn-glow {
+      animation: pulseGlow 2s infinite;
+    }
+
+    /* Gaya Tombol Game 3D */
+    .btn-game {
+      transition: all 0.15s cubic-bezier(0.34, 1.56, 0.64, 1);
+      box-shadow: 0 6px 0 rgba(0, 0, 0, 0.2);
+    }
+    .btn-game:hover {
+      transform: translateY(-2px);
+      filter: brightness(1.05);
+    }
+    .btn-game:active {
+      transform: translateY(4px);
+      box-shadow: 0 2px 0 rgba(0, 0, 0, 0.2);
+    }
+
+    /* Canvas full screen */
+    #gameCanvas {
+      position: fixed;
+      inset: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 1;
+      touch-action: none;
+    }
+
+    /* Custom Scrollbar untuk modal kecil jika layar pendek */
+    ::-webkit-scrollbar {
+      width: 6px;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(56, 189, 248, 0.5);
+      border-radius: 999px;
+    }
+  </style>
+</head>
+<body class="relative text-slate-800">
+
+  <!-- CANVAS UTAMA GAME (Langit, Awan, Balon 3D, Partikel, Kursor Tangan) -->
+  <canvas id="gameCanvas"></canvas>
+
+  <!-- VIDEO TERSEMBUNYI UNTUK MEDIAPIPE -->
+  <video id="inputVideo" class="hidden" playsinline></video>
+
+  <!-- PREVIEW KAMERA KECIL DI POJOK KANAN BAWAH (Aktif hanya jika kamera diizinkan) -->
+  <div id="cameraPreviewContainer" class="hidden fixed bottom-3 right-3 z-30 bg-white/90 backdrop-blur-md p-2 rounded-2xl shadow-xl border-2 border-sky-400 transition-all">
+    <div class="flex items-center justify-between gap-2 mb-1 px-1">
+      <span class="text-xs font-extrabold text-sky-700 flex items-center gap-1">
+        <span id="camStatusDot" class="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+        Gesture Tangan
+      </span>
+      <button id="toggleCamBtn" onclick="toggleCameraPreview()" class="text-[11px] bg-sky-100 hover:bg-sky-200 text-sky-800 font-bold px-2 py-0.5 rounded-lg">
+        Sembunyikan
+      </button>
+    </div>
+    <div id="cameraCanvasWrapper" class="relative w-36 h-28 sm:w-44 sm:h-32 rounded-xl overflow-hidden bg-slate-900 border border-sky-200">
+      <canvas id="cameraCanvas" class="w-full h-full object-cover"></canvas>
+      <div id="pinchIndicator" class="absolute bottom-1 left-1 right-1 text-center text-[10px] font-extrabold py-0.5 px-1.5 rounded-md bg-black/60 text-white">
+        Arahkan Telunjuk & Pinch 🤏
+      </div>
+    </div>
+  </div>
+
+  <!-- NAVBAR ATAS (Tampil saat permainan berlangsung) -->
+  <header id="gameNavbar" class="hidden fixed top-0 left-0 right-0 z-20 px-3 pt-2 sm:px-6 sm:pt-3 pointer-events-none">
+    <div class="max-w-6xl mx-auto bg-white/95 backdrop-blur-md rounded-2xl shadow-lg border-2 border-sky-300 px-3 py-2 sm:px-5 sm:py-2.5 pointer-events-auto">
+      <div class="flex flex-wrap items-center justify-between gap-2">
+        
+        <!-- Identitas Siswa & Judul Singkat -->
+        <div class="flex items-center gap-2 sm:gap-3">
+          <div class="w-9 h-9 sm:w-10 sm:h-10 rounded-xl bg-gradient-to-br from-amber-400 to-orange-500 flex items-center justify-center text-white text-lg sm:text-xl shadow-md">
+            🎈
+          </div>
+          <div>
+            <div class="flex items-center gap-1.5">
+              <span class="font-display font-bold text-sm sm:text-base text-sky-800 leading-tight">BALLOON POP</span>
+              <span class="hidden md:inline-block text-xs font-extrabold bg-sky-100 text-sky-700 px-2 py-0.5 rounded-full">IPAS • PETA</span>
+            </div>
+            <div class="text-xs sm:text-sm font-bold text-slate-600 flex items-center gap-1">
+              <span>👦👧</span>
+              <span id="navStudentName" class="text-indigo-700 font-extrabold truncate max-w-[110px] sm:max-w-[180px]">Siswa Hebat</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Status Level, Skor, Timer & Kontrol Audio -->
+        <div class="flex items-center gap-1.5 sm:gap-3">
+          <!-- Level Badge -->
+          <div class="bg-indigo-50 border border-indigo-200 px-2.5 py-1 rounded-xl text-center">
+            <div class="text-[10px] font-bold text-indigo-500 uppercase">Level</div>
+            <div id="navLevel" class="font-display font-bold text-xs sm:text-sm text-indigo-800">1 / 5</div>
+          </div>
+
+          <!-- Skor Badge -->
+          <div class="bg-amber-50 border border-amber-200 px-2.5 py-1 rounded-xl text-center">
+            <div class="text-[10px] font-bold text-amber-600 uppercase">Skor</div>
+            <div id="navScore" class="font-display font-bold text-xs sm:text-sm text-amber-700">0</div>
+          </div>
+
+          <!-- Timer Badge -->
+          <div class="bg-rose-50 border border-rose-200 px-2.5 py-1 rounded-xl text-center min-w-[54px]">
+            <div class="text-[10px] font-bold text-rose-500 uppercase">Waktu</div>
+            <div id="navTimer" class="font-display font-bold text-xs sm:text-sm text-rose-700">00:00</div>
+          </div>
+
+          <!-- Tombol Mute/Unmute Suara -->
+          <button id="soundToggleBtn" onclick="toggleMute()" title="Suara Efek" class="p-2 sm:p-2.5 rounded-xl bg-sky-100 hover:bg-sky-200 text-sky-800 border border-sky-300 transition active:scale-95">
+            <span id="soundIcon" class="text-base sm:text-lg">🔊</span>
+          </button>
+
+          <!-- Tombol Aktifkan/Matikan Kamera Cepat -->
+          <button id="quickCamBtn" onclick="handleQuickCameraToggle()" title="Kamera Gesture" class="p-2 sm:p-2.5 rounded-xl bg-emerald-100 hover:bg-emerald-200 text-emerald-800 border border-emerald-300 transition active:scale-95">
+            <span id="camIcon" class="text-base sm:text-lg">📷</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Progress Bar Keseluruhan (15 Soal) -->
+      <div class="mt-2 flex items-center gap-2">
+        <span class="text-[11px] font-extrabold text-slate-500 whitespace-nowrap" id="progressLabel">Soal 1/15</span>
+        <div class="w-full h-2.5 bg-slate-200 rounded-full overflow-hidden p-0.5">
+          <div id="progressBarFill" class="h-full bg-gradient-to-r from-emerald-400 via-teal-400 to-sky-500 rounded-full transition-all duration-500" style="width: 6.6%"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- KARTU PERTANYAAN UTAMA -->
+    <div id="questionCard" class="max-w-4xl mx-auto mt-2.5 bg-white/95 backdrop-blur-md rounded-2xl shadow-xl border-2 border-amber-300 p-3 sm:p-4 pointer-events-auto transition-all">
+      <div class="flex flex-wrap items-center justify-between gap-2 mb-1.5">
+        <div class="flex items-center gap-2">
+          <span id="levelTopicBadge" class="text-xs font-extrabold bg-sky-100 text-sky-800 px-2.5 py-0.5 rounded-full">
+            Level 1: Mengenal Peta & Arah Mata Angin
+          </span>
+          <span id="questionCategoryBadge" class="text-xs font-extrabold bg-emerald-100 text-emerald-800 px-2.5 py-0.5 rounded-full">
+            Soal 1 • LOTS
+          </span>
+        </div>
+        <span id="controlHintText" class="text-[11px] font-bold text-slate-500">
+          💡 Klik/Sentuh balon atau arahkan jari & cubit (pinch) 🤏
+        </span>
+      </div>
+      <h2 id="questionText" class="font-display font-semibold text-base sm:text-xl md:text-2xl text-slate-800 leading-snug">
+        Memuat pertanyaan...
+      </h2>
+    </div>
+  </header>
+
+  <!-- BANNER UMPAN BALIK CEPAT (Benar / Salah) -->
+  <div id="feedbackToast" class="hidden fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-40 pointer-events-none transition-all duration-300">
+    <div id="feedbackToastBox" class="px-6 py-4 rounded-3xl shadow-2xl border-4 text-center transform scale-100">
+      <div id="feedbackEmoji" class="text-4xl sm:text-5xl mb-1">🎉</div>
+      <div id="feedbackTitle" class="font-display font-bold text-xl sm:text-2xl">Hebat! Benar!</div>
+      <div id="feedbackSub" class="text-xs sm:text-sm font-bold mt-0.5">+100 Poin</div>
+    </div>
+  </div>
+
+  <!-- ===================================================================== -->
+  <!-- LAYAR AWAL (START SCREEN) -->
+  <!-- ===================================================================== -->
+  <section id="startScreen" class="fixed inset-0 z-30 flex items-center justify-center p-4 overflow-y-auto">
+    <div class="max-w-xl w-full bg-white/95 backdrop-blur-md rounded-3xl shadow-2xl border-4 border-amber-300 p-6 sm:p-8 text-center animate-float my-auto">
+      
+      <!-- Badge Identitas Pembelajaran -->
+      <div class="inline-flex items-center gap-2 bg-sky-100 text-sky-800 font-extrabold text-xs sm:text-sm px-4 py-1.5 rounded-full mb-3 border border-sky-200">
+        <span>📚 IPAS KELAS 4 SD</span>
+        <span>•</span>
+        <span>🗺️ MATERI: PETA</span>
+      </div>
+
+      <!-- Judul Game -->
+      <h1 class="font-display font-bold text-3xl sm:text-5xl text-transparent bg-clip-text bg-gradient-to-r from-sky-600 via-indigo-600 to-rose-500 drop-shadow-sm mb-1">
+        BALLOON POP
+      </h1>
+      <p class="font-display font-bold text-lg sm:text-2xl text-amber-500 mb-4">
+        🎈 PECAHKAN BALON PINTAR 🎈
+      </p>
+
+      <p class="text-slate-600 text-sm sm:text-base font-semibold mb-5 leading-relaxed">
+        Pecahkan balon berisi jawaban yang tepat melintasi <strong class="text-sky-700">5 Level Petualangan Peta</strong>! Gunakan gerakan tangan (<strong class="text-indigo-600">Pinch 🤏</strong>) melalui kamera atau langsung klik/sentuh balon.
+      </p>
+
+      <!-- Input Nama Siswa -->
+      <div class="text-left mb-4">
+        <label for="studentNameInput" class="block text-xs sm:text-sm font-extrabold text-slate-700 mb-1.5 ml-1">
+          ✍️ Masukkan Nama Lengkap / Panggilanmu:
+        </label>
+        <input 
+          type="text" 
+          id="studentNameInput" 
+          maxlength="24"
+          placeholder="Contoh: Budi Santoso" 
+          class="w-full px-4 py-3 rounded-2xl border-2 border-sky-300 focus:border-indigo-500 focus:outline-none text-base sm:text-lg font-bold text-slate-800 bg-sky-50/60 placeholder-slate-400 transition"
+        />
+        <p id="nameErrorMsg" class="hidden text-rose-600 text-xs font-extrabold mt-1 ml-1">
+          ⚠️ Yuk isi namamu dulu sebelum mulai bermain!
+        </p>
+      </div>
+
+      <!-- Pilihan Mode Kamera (Persetujuan Eksplisit Pengguna) -->
+      <div class="bg-indigo-50/80 border-2 border-indigo-200 rounded-2xl p-3.5 mb-5 text-left">
+        <div class="flex items-start gap-3">
+          <input 
+            type="checkbox" 
+            id="enableCameraCheckbox" 
+            class="mt-1 w-5 h-5 accent-indigo-600 rounded cursor-pointer"
+          />
+          <label for="enableCameraCheckbox" class="cursor-pointer">
+            <span class="block font-extrabold text-sm text-indigo-900">
+              📷 Aktifkan Deteksi Gesture Tangan (Kamera)
+            </span>
+            <span class="block text-xs text-indigo-700 mt-0.5 leading-snug">
+              Arahkan jari telunjuk ke balon lalu lakukan gerakan mencubit (<b>pinch</b>) untuk memecahkan balon. <i>(Mouse & layar sentuh tetap aktif setiap saat).</i>
+            </span>
+          </label>
+        </div>
+        <div id="cameraStatusNotice" class="hidden mt-2 text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1.5 rounded-xl">
+          Meminta izin kamera...
+        </div>
+      </div>
+
+      <!-- Tombol Mulai Bermain -->
+      <button 
+        id="startGameBtn"
+        onclick="startGame()" 
+        class="btn-game btn-glow w-full py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-emerald-500 to-teal-500 text-white font-display font-bold text-xl sm:text-2xl tracking-wide cursor-pointer"
+      >
+        🚀 MULAI BERMAIN
+      </button>
+
+      <!-- Info Singkat Struktur Soal -->
+      <div class="mt-4 flex justify-center gap-2 text-[11px] sm:text-xs font-extrabold text-slate-500">
+        <span class="bg-slate-100 px-2.5 py-1 rounded-lg">5 Level</span>
+        <span class="bg-slate-100 px-2.5 py-1 rounded-lg">15 Soal (LOTS • MOTS • HOTS)</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- MODAL TRANSISI LEVEL -->
+  <!-- ===================================================================== -->
+  <section id="levelTransitionModal" class="hidden fixed inset-0 z-40 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+    <div class="max-w-md w-full bg-white rounded-3xl shadow-2xl border-4 border-sky-400 p-6 sm:p-8 text-center">
+      <div class="text-5xl sm:text-6xl mb-2">🌟</div>
+      <span class="inline-block bg-emerald-100 text-emerald-800 font-extrabold text-xs px-3 py-1 rounded-full mb-2">
+        LEVEL SELESAI!
+      </span>
+      <h2 id="levelCompleteTitle" class="font-display font-bold text-2xl sm:text-3xl text-slate-800 mb-2">
+        Hebat, Level 1 Tuntas!
+      </h2>
+      <p id="levelCompleteDesc" class="text-slate-600 font-semibold text-sm sm:text-base mb-5">
+        Bersiaplah menuju tantangan peta berikutnya!
+      </p>
+      <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3 mb-5">
+        <div class="text-xs font-bold text-amber-600">SKOR SEMENTARA</div>
+        <div id="levelTransitionScore" class="font-display font-bold text-3xl text-amber-600">300</div>
+      </div>
+      <button 
+        onclick="proceedToNextLevel()" 
+        class="btn-game w-full py-3.5 rounded-2xl bg-gradient-to-r from-sky-500 to-indigo-600 text-white font-display font-bold text-lg sm:text-xl cursor-pointer"
+      >
+        Lanjut ke Level Berikutnya ➡️
+      </button>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- LAYAR APRESIASI AKHIR PERMAINAN -->
+  <!-- ===================================================================== -->
+  <section id="endScreen" class="hidden fixed inset-0 z-40 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+    <div class="max-w-lg w-full bg-white rounded-3xl shadow-2xl border-4 border-amber-400 p-6 sm:p-8 text-center my-auto">
+      <div id="endStars" class="text-4xl sm:text-5xl mb-2 tracking-widest">⭐⭐⭐</div>
+      <span class="inline-block bg-indigo-100 text-indigo-800 font-extrabold text-xs px-3 py-1 rounded-full mb-2">
+        APRESIASI AKHIR PERMAINAN
+      </span>
+      <h2 class="font-display font-bold text-2xl sm:text-3xl text-slate-800">
+        Selamat, <span id="endStudentName" class="text-indigo-600">Siswa</span>!
+      </h2>
+      <p id="endPredicate" class="font-display font-bold text-lg sm:text-xl text-amber-500 mt-1 mb-4">
+        🏆 Navigator Peta Cilik Hebat!
+      </p>
+
+      <!-- Ringkasan Statistik -->
+      <div class="grid grid-cols-3 gap-2 sm:gap-3 mb-5">
+        <div class="bg-amber-50 border-2 border-amber-200 rounded-2xl p-3">
+          <div class="text-[11px] font-extrabold text-amber-600 uppercase">Total Skor</div>
+          <div id="endFinalScore" class="font-display font-bold text-xl sm:text-2xl text-amber-700">1500</div>
+        </div>
+        <div class="bg-emerald-50 border-2 border-emerald-200 rounded-2xl p-3">
+          <div class="text-[11px] font-extrabold text-emerald-600 uppercase">Tepat Sasaran</div>
+          <div id="endAccuracy" class="font-display font-bold text-xl sm:text-2xl text-emerald-700">100%</div>
+        </div>
+        <div class="bg-sky-50 border-2 border-sky-200 rounded-2xl p-3">
+          <div class="text-[11px] font-extrabold text-sky-600 uppercase">Total Waktu</div>
+          <div id="endTotalTime" class="font-display font-bold text-xl sm:text-2xl text-sky-700">01:45</div>
+        </div>
+      </div>
+
+      <div class="bg-slate-50 border border-slate-200 rounded-2xl p-3.5 mb-6 text-xs sm:text-sm font-semibold text-slate-600">
+        Kamu telah menyelesaikan semua <strong class="text-slate-800">5 Level (15 Soal LOTS, MOTS, dan HOTS)</strong> mata pelajaran <strong class="text-sky-700">IPAS Materi Peta Kelas 4 SD</strong>. Teruslah berlatih membaca peta!
+      </div>
+
+      <button 
+        onclick="resetAndPlayAgain()" 
+        class="btn-game w-full py-3.5 sm:py-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-500 text-white font-display font-bold text-xl cursor-pointer"
+      >
+        🔄 MAIN LAGI
+      </button>
+    </div>
+  </section>
+
+  <!-- ===================================================================== -->
+  <!-- LOGIKA GAME, AUDIO SYNTHESIZER, BANK SOAL IPAS & MEDIAPIPE HANDS -->
+  <!-- ===================================================================== -->
+  <script>
+    /**
+     * 1. BANK SOAL IPAS KELAS 4 SD – MATERI PETA
+     * 5 Level bertahap. Setiap level berisi 3 soal:
+     * Index 0: LOTS (Mengingat & Memahami)
+     * Index 1: MOTS (Menerapkan & Menganalisis)
+     * Index 2: HOTS (Mengevaluasi & Memecahkan Masalah)
+     */
+    const GAME_LEVELS = [
+      {
+        level: 1,
+        topic: "Level 1: Pengenalan Peta & Arah Mata Angin",
+        questions: [
+          {
+            category: "LOTS",
+            question: "Gambaran permukaan bumi pada bidang datar yang diperkecil menggunakan skala disebut...",
+            options: ["Peta", "Globe", "Kompas", "Foto Udara"],
+            correctIndex: 0
+          },
+          {
+            category: "MOTS",
+            question: "Pada peta, tanda panah arah mata angin huruf 'U' selalu menunjuk ke arah...",
+            options: ["Atas (Utara)", "Bawah (Selatan)", "Kanan (Timur)", "Kiri (Barat)"],
+            correctIndex: 0
+          },
+          {
+            category: "HOTS",
+            question: "Rina menghadap ke arah Utara saat membaca peta. Jika sekolah berada di sebelah kanan Rina, maka sekolah terletak di arah...",
+            options: ["Timur", "Barat", "Selatan", "Barat Laut"],
+            correctIndex: 0
+          }
+        ]
+      },
+      {
+        level: 2,
+        topic: "Level 2: Komponen-Komponen Utama Peta",
+        questions: [
+          {
+            category: "LOTS",
+            question: "Komponen peta yang berisi keterangan arti dari simbol-simbol pada peta disebut...",
+            options: ["Legenda", "Judul Peta", "Garis Tepi", "Inset"],
+            correctIndex: 0
+          },
+          {
+            category: "MOTS",
+            question: "Jika kita ingin melihat posisi suatu pulau kecil di dalam wilayah negara yang lebih luas, komponen peta yang membantu adalah...",
+            options: ["Inset Peta", "Skala Garis", "Tahun Pembuatan", "Garis Astronomis"],
+            correctIndex: 0
+          },
+          {
+            category: "HOTS",
+            question: "Sebuah peta tidak memiliki legenda sama sekali. Apa kesulitan utama yang akan dialami pembaca peta tersebut?",
+            options: [
+              "Sulit memahami arti simbol jalan & sungai",
+              "Tidak tahu arah mata angin Utara",
+              "Tidak bisa mengukur luas kertas peta",
+              "Warna peta menjadi hilang semua"
+            ],
+            correctIndex: 0
+          }
+        ]
+      },
+      {
+        level: 3,
+        topic: "Level 3: Simbol & Warna pada Peta",
+        questions: [
+          {
+            category: "LOTS",
+            question: "Warna biru pada peta kenampakan alam digunakan untuk menggambarkan wilayah...",
+            options: ["Perairan / Laut", "Pegunungan Tinggi", "Dataran Rendah", "Hutan Lindung"],
+            correctIndex: 0
+          },
+          {
+            category: "MOTS",
+            question: "Simbol titik berbentuk segitiga merah pada peta kenampakan alam menunjukkan adanya...",
+            options: ["Gunung Berapi Aktif", "Danau Buatan", "Bandar Udara", "Pelabuhan Laut"],
+            correctIndex: 0
+          },
+          {
+            category: "HOTS",
+            question: "Wilayah Kota Tuban di pesisir pantai utara Jawa didominasi warna hijau pada peta, sedangkan wilayah Bromo berwarna cokelat tua. Artinya...",
+            options: [
+              "Tuban dataran rendah, Bromo dataran tinggi",
+              "Tuban lebih dingin daripada Bromo",
+              "Bromo berada di dasar laut dalam",
+              "Tuban tidak memiliki penduduk"
+            ],
+            correctIndex: 0
+          }
+        ]
+      },
+      {
+        level: 4,
+        topic: "Level 4: Skala & Jarak pada Peta",
+        questions: [
+          {
+            category: "LOTS",
+            question: "Perbandingan antara jarak pada peta dengan jarak sebenarnya di permukaan bumi disebut...",
+            options: ["Skala Peta", "Simbol Garis", "Judul Peta", "Garis Bujur"],
+            correctIndex: 0
+          },
+          {
+            category: "MOTS",
+            question: "Arti dari skala angka 1 : 100.000 pada sebuah peta kabupaten adalah...",
+            options: [
+              "1 cm di peta = 1 km jarak sebenarnya",
+              "1 cm di peta = 100 km jarak sebenarnya",
+              "1 meter di peta = 100 cm sebenarnya",
+              "1 km di peta = 1 cm jarak sebenarnya"
+            ],
+            correctIndex: 0
+          },
+          {
+            category: "HOTS",
+            question: "Jarak Kota A ke Kota B pada peta berskala 1 : 200.000 adalah 4 cm. Berapa kilometer jarak sebenarnya kedua kota tersebut?",
+            options: ["8 km", "80 km", "2 km", "40 km"],
+            correctIndex: 0
+          }
+        ]
+      },
+      {
+        level: 5,
+        topic: "Level 5: Membaca & Memecahkan Masalah Peta",
+        questions: [
+          {
+            category: "LOTS",
+            question: "Simbol gambar pesawat terbang pada peta umum menunjukkan lokasi...",
+            options: ["Bandar Udara", "Stasiun Kereta", "Terminal Bus", "Pelabuhan Kapal"],
+            correctIndex: 0
+          },
+          {
+            category: "MOTS",
+            question: "Peta yang khusus menggambarkan persebaran hasil tambang atau curah hujan di Indonesia termasuk jenis...",
+            options: ["Peta Tematik (Khusus)", "Peta Umum", "Peta Dunia", "Denah Kelas"],
+            correctIndex: 0
+          },
+          {
+            category: "HOTS",
+            question: "Keluarga Edo ingin berwisata dari titik Barat ke Timur melewati jalur paling cepat. Pada peta terlihat simbol garis merah tebal dan garis tipis berkelok. Jalur mana yang sebaiknya dipilih?",
+            options: [
+              "Garis merah tebal (Jalan Utama/Arteri)",
+              "Garis biru berkelok (Aliran Sungai)",
+              "Garis putus-putus (Batas Kecamatan)",
+              "Garis tipis berkelok (Jalan Setapak)"
+            ],
+            correctIndex: 0
+          }
+        ]
+      }
+    ];
+
+    /**
+     * 2. WEB AUDIO API SYNTHESIZER (Efek suara tanpa file eksternal)
+     */
+    class SoundFX {
+      constructor() {
+        this.ctx = null;
+        this.muted = false;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioContext = window.AudioContext || window.webkitAudioContext;
+          if (AudioContext) this.ctx = new AudioContext();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      playPopCorrect() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // Suara letusan balon (pop)
+        const oscPop = this.ctx.createOscillator();
+        const gainPop = this.ctx.createGain();
+        oscPop.type = 'sine';
+        oscPop.frequency.setValueAtTime(320, now);
+        oscPop.frequency.exponentialRampToValueAtTime(920, now + 0.09);
+        gainPop.gain.setValueAtTime(0.4, now);
+        gainPop.gain.exponentialRampToValueAtTime(0.01, now + 0.1);
+        oscPop.connect(gainPop);
+        gainPop.connect(this.ctx.destination);
+        oscPop.start(now);
+        oscPop.stop(now + 0.11);
+
+        // Melodi ceria (arpeggio C5 - E5 - G5 - C6)
+        const notes = [523.25, 659.25, 783.99, 1046.50];
+        notes.forEach((freq, idx) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + 0.06 + idx * 0.07);
+          gain.gain.setValueAtTime(0.22, now + 0.06 + idx * 0.07);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + 0.25 + idx * 0.07);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + 0.06 + idx * 0.07);
+          osc.stop(now + 0.28 + idx * 0.07);
+        });
+      }
+
+      playWrong() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sawtooth';
+        osc.frequency.setValueAtTime(210, now);
+        osc.frequency.linearRampToValueAtTime(140, now + 0.28);
+
+        gain.gain.setValueAtTime(0.2, now);
+        gain.gain.exponentialRampToValueAtTime(0.001, now + 0.3);
+
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start(now);
+        osc.stop(now + 0.32);
+      }
+
+      playLevelUp() {
+        if (this.muted) return;
+        this.init();
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const fanfare = [523.25, 659.25, 783.99, 1046.50, 783.99, 1046.50];
+        fanfare.forEach((freq, i) => {
+          const osc = this.ctx.createOscillator();
+          const gain = this.ctx.createGain();
+          osc.type = 'triangle';
+          osc.frequency.setValueAtTime(freq, now + i * 0.11);
+          gain.gain.setValueAtTime(0.25, now + i * 0.11);
+          gain.gain.exponentialRampToValueAtTime(0.001, now + i * 0.11 + 0.28);
+          osc.connect(gain);
+          gain.connect(this.ctx.destination);
+          osc.start(now + i * 0.11);
+          osc.stop(now + i * 0.11 + 0.3);
+        });
+      }
+    }
+
+    const sfx = new SoundFX();
+
+    function toggleMute() {
+      sfx.muted = !sfx.muted;
+      document.getElementById('soundIcon').textContent = sfx.muted ? '🔇' : '🔊';
+    }
+
+    /**
+     * 3. STATE UTAMA GAME
+     */
+    const state = {
+      status: 'START', // START, PLAYING, TRANSITION, END
+      studentName: '',
+      currentLevelIdx: 0, // 0..4
+      currentQuestionIdx: 0, // 0..2
+      score: 0,
+      totalAttempts: 0,
+      correctAnswers: 0,
+      elapsedSeconds: 0,
+      questionStartTime: 0,
+      timerInterval: null,
+      isAdvancing: false,
+
+      // Entitas visual di canvas
+      clouds: [],
+      balloons: [],
+      particles: [],
+      floatingTexts: [],
+
+      // Pointer (Mouse / Touch / Hand Gesture)
+      pointer: {
+        x: window.innerWidth / 2,
+        y: window.innerHeight / 2,
+        active: false,
+        isPinching: false,
+        pinchCooldown: 0,
+        source: 'mouse' // 'mouse' | 'hand'
+      },
+
+      // Kamera & MediaPipe
+      cameraEnabled: false,
+      cameraPreviewVisible: true,
+      handsInstance: null,
+      cameraInstance: null
+    };
+
+    // Palet warna balon 3D cerah
+    const BALLOON_PALETTES = [
+      { main: '#ef4444', light: '#fca5a5', dark: '#991b1b' }, // Merah Ceria
+      { main: '#3b82f6', light: '#93c5fd', dark: '#1e40af' }, // Biru Langit
+      { main: '#10b981', light: '#6ee7b7', dark: '#065f46' }, // Hijau Zamrud
+      { main: '#f59e0b', light: '#fcd34d', dark: '#92400e' }, // Oranye Emas
+      { main: '#a855f7', light: '#d8b4fe', dark: '#581c87' }, // Ungu Anggur
+      { main: '#ec4899', light: '#f9a8d4', dark: '#9d174d' }  // Merah Muda
+    ];
+
+    /**
+     * 4. INISIALISASI CANVAS & RESPONSIVITAS
+     */
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    function resizeCanvas() {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+      if (state.status === 'PLAYING' && state.balloons.length > 0) {
+        repositionBalloonsOnResize();
+      }
+    }
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // Inisialisasi awan dekoratif
+    function initClouds() {
+      state.clouds = [];
+      const count = Math.max(5, Math.floor(canvas.width / 260));
+      for (let i = 0; i < count; i++) {
+        state.clouds.push({
+          x: Math.random() * canvas.width,
+          y: 40 + Math.random() * (canvas.height * 0.65),
+          scale: 0.6 + Math.random() * 0.8,
+          speed: 0.2 + Math.random() * 0.35
+        });
+      }
+    }
+    initClouds();
+
+    /**
+     * 5. LOGIKA MEMBUAT BALON UNTUK SETIAP PERTANYAAN
+     */
+    function spawnBalloonsForCurrentQuestion() {
+      const levelObj = GAME_LEVELS[state.currentLevelIdx];
+      const qObj = levelObj.questions[state.currentQuestionIdx];
+
+      // Acak urutan opsi jawaban agar posisi jawaban benar bervariasi
+      const indexedOptions = qObj.options.map((text, idx) => ({
+        text,
+        isCorrect: idx === qObj.correctIndex
+      }));
+
+      for (let i = indexedOptions.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [indexedOptions[i], indexedOptions[j]] = [indexedOptions[j], indexedOptions[i]];
+      }
+
+      // Pilih 4 warna berbeda
+      const shuffledColors = [...BALLOON_PALETTES].sort(() => Math.random() - 0.5);
+
+      const count = indexedOptions.length;
+      const isMobile = canvas.width < 640;
+      const topSafeZone = isMobile ? 215 : 225;
+      const bottomSafeZone = 85;
+      const availableHeight = Math.max(240, canvas.height - topSafeZone - bottomSafeZone);
+
+      // Ukuran balon responsif
+      const rx = isMobile
+        ? Math.min(74, Math.max(56, (canvas.width - 36) / 4.3))
+        : Math.min(108, Math.max(76, (canvas.width - 120) / 5.2));
+      const ry = rx * 1.18;
+
+      state.balloons = indexedOptions.map((opt, idx) => {
+        // Sebar posisi horizontal secara merata (4 kolom di desktop/tablet, atau 2x2 / 4 kolom rapi)
+        let baseX, baseY;
+        if (canvas.width < 540) {
+          // Layout 2 kolom x 2 baris di layar HP sangat sempit agar teks besar & terbaca
+          const col = idx % 2;
+          const row = Math.floor(idx / 2);
+          baseX = canvas.width * (col === 0 ? 0.28 : 0.72);
+          baseY = topSafeZone + ry * 0.85 + row * (availableHeight * 0.48);
+        } else {
+          // Layout 4 kolom berjajar rapi
+          const sectionWidth = canvas.width / count;
+          baseX = sectionWidth * idx + sectionWidth / 2;
+          baseY = topSafeZone + availableHeight * (0.45 + (idx % 2 === 0 ? -0.07 : 0.07));
+        }
+
+        return {
+          id: idx,
+          text: opt.text,
+          isCorrect: opt.isCorrect,
+          color: shuffledColors[idx % shuffledColors.length],
+          baseX,
+          baseY,
+          x: baseX,
+          y: canvas.height + 150 + idx * 60, // Muncul terbang dari bawah
+          rx: canvas.width < 540 ? Math.min(86, canvas.width * 0.21) : rx,
+          ry: (canvas.width < 540 ? Math.min(86, canvas.width * 0.21) : rx) * 1.16,
+          bobOffset: idx * 1.4 + Math.random(),
+          bobSpeed: 0.025 + Math.random() * 0.01,
+          bobAmpY: isMobile ? 12 : 20,
+          bobAmpX: isMobile ? 6 : 12,
+          shakeTimer: 0,
+          disabled: false,
+          scale: 1
+        };
+      });
+
+      state.questionStartTime = Date.now();
+      state.isAdvancing = false;
+    }
+
+    function repositionBalloonsOnResize() {
+      const count = state.balloons.length;
+      const isMobile = canvas.width < 640;
+      const topSafeZone = isMobile ? 215 : 225;
+      const bottomSafeZone = 85;
+      const availableHeight = Math.max(240, canvas.height - topSafeZone - bottomSafeZone);
+
+      state.balloons.forEach((b, idx) => {
+        if (canvas.width < 540) {
+          const col = idx % 2;
+          const row = Math.floor(idx / 2);
+          b.baseX = canvas.width * (col === 0 ? 0.28 : 0.72);
+          b.baseY = topSafeZone + b.ry * 0.85 + row * (availableHeight * 0.48);
+          b.rx = Math.min(86, canvas.width * 0.21);
+          b.ry = b.rx * 1.16;
+        } else {
+          const rx = isMobile
+            ? Math.min(74, Math.max(56, (canvas.width - 36) / 4.3))
+            : Math.min(108, Math.max(76, (canvas.width - 120) / 5.2));
+          b.rx = rx;
+          b.ry = rx * 1.18;
+          const sectionWidth = canvas.width / count;
+          b.baseX = sectionWidth * idx + sectionWidth / 2;
+          b.baseY = topSafeZone + availableHeight * (0.45 + (idx % 2 === 0 ? -0.07 : 0.07));
+        }
+      });
+    }
+
+    /**
+     * 6. MEMULAI & MENGATUR ALUR PERMAINAN
+     */
+    async function startGame() {
+      const nameInput = document.getElementById('studentNameInput');
+      const nameVal = nameInput.value.trim();
+      const errMsg = document.getElementById('nameErrorMsg');
+
+      if (!nameVal) {
+        errMsg.classList.remove('hidden');
+        nameInput.focus();
+        return;
+      }
+      errMsg.classList.add('hidden');
+
+      sfx.init();
+      state.studentName = nameVal;
+      state.currentLevelIdx = 0;
+      state.currentQuestionIdx = 0;
+      state.score = 0;
+      state.totalAttempts = 0;
+      state.correctAnswers = 0;
+      state.elapsedSeconds = 0;
+
+      // Cek apakah pengguna mencentang izin kamera
+      const wantCamera = document.getElementById('enableCameraCheckbox').checked;
+      if (wantCamera) {
+        await initHandTrackingCamera();
+      }
+
+      // Transisi UI dari Start Screen ke Game Screen
+      document.getElementById('startScreen').classList.add('hidden');
+      document.getElementById('endScreen').classList.add('hidden');
+      document.getElementById('levelTransitionModal').classList.add('hidden');
+      document.getElementById('gameNavbar').classList.remove('hidden');
+
+      document.getElementById('navStudentName').textContent = state.studentName;
+      state.status = 'PLAYING';
+
+      startTimer();
+      loadCurrentQuestionUI();
+    }
+
+    function startTimer() {
+      if (state.timerInterval) clearInterval(state.timerInterval);
+      state.timerInterval = setInterval(() => {
+        if (state.status === 'PLAYING') {
+          state.elapsedSeconds++;
+          document.getElementById('navTimer').textContent = formatTime(state.elapsedSeconds);
+        }
+      }, 1000);
+    }
+
+    function formatTime(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function loadCurrentQuestionUI() {
+      const levelObj = GAME_LEVELS[state.currentLevelIdx];
+      const qObj = levelObj.questions[state.currentQuestionIdx];
+      const globalQNum = state.currentLevelIdx * 3 + state.currentQuestionIdx + 1;
+
+      document.getElementById('navLevel').textContent = `${levelObj.level} / 5`;
+      document.getElementById('navScore').textContent = state.score;
+      document.getElementById('progressLabel').textContent = `Soal ${globalQNum}/15`;
+      document.getElementById('progressBarFill').style.width = `${(globalQNum / 15) * 100}%`;
+
+      document.getElementById('levelTopicBadge').textContent = levelObj.topic;
+      
+      // Warna badge kategori LOTS / MOTS / HOTS
+      const catBadge = document.getElementById('questionCategoryBadge');
+      catBadge.textContent = `Soal ${state.currentQuestionIdx + 1} • ${qObj.category}`;
+      catBadge.className = "text-xs font-extrabold px-2.5 py-0.5 rounded-full ";
+      if (qObj.category === 'LOTS') {
+        catBadge.className += "bg-emerald-100 text-emerald-800";
+      } else if (qObj.category === 'MOTS') {
+        catBadge.className += "bg-amber-100 text-amber-800";
+      } else {
+        catBadge.className += "bg-rose-100 text-rose-800";
+      }
+
+      document.getElementById('questionText').textContent = qObj.question;
+
+      spawnBalloonsForCurrentQuestion();
+    }
+
+    /**
+     * 7. MEKANISME PEMECAHAN BALON (POP)
+     */
+    function triggerPopAt(px, py) {
+      if (state.status !== 'PLAYING' || state.isAdvancing) return;
+
+      // Efek riak gelombang (ripple) saat pinch/klik
+      createPinchRipple(px, py);
+
+      // Cek tabrakan dari balon terdepan ke belakang
+      for (let i = state.balloons.length - 1; i >= 0; i--) {
+        const b = state.balloons[i];
+        if (b.disabled) continue;
+
+        // Persamaan elips untuk deteksi klik/pinch di dalam balon
+        const dx = (px - b.x) / (b.rx * 1.08);
+        const dy = (py - b.y) / (b.ry * 1.08);
+        if (dx * dx + dy * dy <= 1) {
+          handleBalloonHit(b);
+          return;
+        }
+      }
+    }
+
+    function handleBalloonHit(balloon) {
+      state.totalAttempts++;
+
+      if (balloon.isCorrect) {
+        // JAWABAN BENAR!
+        state.isAdvancing = true;
+        state.correctAnswers++;
+        sfx.playPopCorrect();
+
+        // Hitung skor + bonus kecepatan
+        const timeTaken = (Date.now() - state.questionStartTime) / 1000;
+        const speedBonus = Math.max(10, Math.round(50 - timeTaken * 2));
+        const earnedPoints = 100 + speedBonus;
+        state.score += earnedPoints;
+        document.getElementById('navScore').textContent = state.score;
+
+        // Ledakan partikel warna-warni
+        createBalloonExplosion(balloon.x, balloon.y, balloon.color);
+
+        // Hapus balon yang pecah
+        state.balloons = state.balloons.filter(b => b.id !== balloon.id);
+
+        showFeedbackToast(
+          true,
+          "🎉 Hebat! Jawaban Benar!",
+          `+${earnedPoints} Poin (Bonus Cepat +${speedBonus})`
+        );
+
+        // Lanjut ke soal berikutnya setelah animasi singkat
+        setTimeout(() => {
+          hideFeedbackToast();
+          advanceQuestionOrLevel();
+        }, 1250);
+
+      } else {
+        // JAWABAN SALAH!
+        sfx.playWrong();
+        balloon.shakeTimer = 28;
+        balloon.disabled = true; // Nonaktifkan balon salah ini agar siswa mudah memilih sisa balon
+
+        // Kurangi sedikit skor (minimal 0)
+        state.score = Math.max(0, state.score - 15);
+        document.getElementById('navScore').textContent = state.score;
+
+        showFeedbackToast(
+          false,
+          "😅 Ups, Kurang Tepat!",
+          "Coba pecahkan balon jawaban lainnya ya!"
+        );
+
+        setTimeout(() => {
+          hideFeedbackToast();
+        }, 1100);
+      }
+    }
+
+    function advanceQuestionOrLevel() {
+      if (state.currentQuestionIdx < 2) {
+        // Masih di level yang sama, lanjut soal berikutnya
+        state.currentQuestionIdx++;
+        loadCurrentQuestionUI();
+      } else {
+        // Level selesai!
+        if (state.currentLevelIdx < GAME_LEVELS.length - 1) {
+          // Tampilkan modal transisi level
+          state.status = 'TRANSITION';
+          sfx.playLevelUp();
+          const finishedLevelNum = state.currentLevelIdx + 1;
+          document.getElementById('levelCompleteTitle').textContent = `Hebat, Level ${finishedLevelNum} Tuntas!`;
+          document.getElementById('levelCompleteDesc').textContent =
+            `Kamu siap melanjutkan ke ${GAME_LEVELS[state.currentLevelIdx + 1].topic}!`;
+          document.getElementById('levelTransitionScore').textContent = state.score;
+          document.getElementById('levelTransitionModal').classList.remove('hidden');
+        } else {
+          // Semua 5 Level Selesai -> Layar Apresiasi Akhir
+          finishEntireGame();
+        }
+      }
+    }
+
+    function proceedToNextLevel() {
+      document.getElementById('levelTransitionModal').classList.add('hidden');
+      state.currentLevelIdx++;
+      state.currentQuestionIdx = 0;
+      state.status = 'PLAYING';
+      loadCurrentQuestionUI();
+    }
+
+    function finishEntireGame() {
+      state.status = 'END';
+      clearInterval(state.timerInterval);
+      sfx.playLevelUp();
+
+      // Ledakan konfeti besar di layar
+      for (let i = 0; i < 5; i++) {
+        setTimeout(() => {
+          createBalloonExplosion(
+            canvas.width * (0.2 + Math.random() * 0.6),
+            canvas.height * (0.3 + Math.random() * 0.3),
+            BALLOON_PALETTES[i % BALLOON_PALETTES.length]
+          );
+        }, i * 250);
+      }
+
+      const accuracy = state.totalAttempts > 0
+        ? Math.min(100, Math.round((state.correctAnswers / state.totalAttempts) * 100))
+        : 100;
+
+      let stars = "⭐⭐⭐";
+      let predicate = "🏆 Master Navigator Peta Cilik!";
+      if (accuracy < 60) {
+        stars = "⭐";
+        predicate = "🌟 Penjelajah Peta Pemula yang Gigih!";
+      } else if (accuracy < 85) {
+        stars = "⭐⭐";
+        predicate = "🧭 Penjelajah Peta Pintar!";
+      }
+
+      document.getElementById('endStars').textContent = stars;
+      document.getElementById('endStudentName').textContent = state.studentName;
+      document.getElementById('endPredicate').textContent = predicate;
+      document.getElementById('endFinalScore').textContent = state.score;
+      document.getElementById('endAccuracy').textContent = `${accuracy}%`;
+      document.getElementById('endTotalTime').textContent = formatTime(state.elapsedSeconds);
+
+      document.getElementById('gameNavbar').classList.add('hidden');
+      document.getElementById('endScreen').classList.remove('hidden');
+    }
+
+    function resetAndPlayAgain() {
+      document.getElementById('endScreen').classList.add('hidden');
+      document.getElementById('startScreen').classList.remove('hidden');
+      state.status = 'START';
+      state.balloons = [];
+    }
+
+    function showFeedbackToast(isSuccess, title, sub) {
+      const toast = document.getElementById('feedbackToast');
+      const box = document.getElementById('feedbackToastBox');
+      document.getElementById('feedbackEmoji').textContent = isSuccess ? '🎈✨' : '💭';
+      document.getElementById('feedbackTitle').textContent = title;
+      document.getElementById('feedbackSub').textContent = sub;
+
+      box.className = isSuccess
+        ? "px-6 py-4 rounded-3xl shadow-2xl border-4 border-emerald-400 bg-white/95 text-emerald-800 text-center"
+        : "px-6 py-4 rounded-3xl shadow-2xl border-4 border-rose-400 bg-white/95 text-rose-800 text-center";
+
+      toast.classList.remove('hidden');
+    }
+
+    function hideFeedbackToast() {
+      document.getElementById('feedbackToast').classList.add('hidden');
+    }
+
+    /**
+     * 8. EFEK PARTIKEL & KONFETI
+     */
+    function createBalloonExplosion(x, y, palette) {
+      const colors = [palette.main, palette.light, '#fde047', '#ffffff', '#38bdf8'];
+      for (let i = 0; i < 42; i++) {
+        const angle = (Math.PI * 2 * i) / 42 + (Math.random() - 0.5) * 0.3;
+        const speed = 3 + Math.random() * 8;
+        state.particles.push({
+          x,
+          y,
+          vx: Math.cos(angle) * speed,
+          vy: Math.sin(angle) * speed - 2,
+          size: 5 + Math.random() * 7,
+          color: colors[Math.floor(Math.random() * colors.length)],
+          alpha: 1,
+          gravity: 0.22,
+          shape: Math.random() > 0.5 ? 'circle' : 'rect',
+          rotation: Math.random() * Math.PI
+        });
+      }
+    }
+
+    function createPinchRipple(x, y) {
+      state.floatingTexts.push({
+        x,
+        y,
+        radius: 10,
+        maxRadius: 55,
+        alpha: 0.9
+      });
+    }
+
+    /**
+     * 9. KONTROL ALTERNATIF MOUSE & LAYAR SENTUH
+     */
+    canvas.addEventListener('mousemove', (e) => {
+      if (state.pointer.source === 'hand' && state.cameraEnabled) return;
+      state.pointer.x = e.clientX;
+      state.pointer.y = e.clientY;
+      state.pointer.active = true;
+    });
+
+    canvas.addEventListener('mousedown', (e) => {
+      state.pointer.x = e.clientX;
+      state.pointer.y = e.clientY;
+      state.pointer.active = true;
+      triggerPopAt(e.clientX, e.clientY);
+    });
+
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length > 0) {
+        const touch = e.touches[0];
+        state.pointer.x = touch.clientX;
+        state.pointer.y = touch.clientY;
+        state.pointer.active = true;
+        triggerPopAt(touch.clientX, touch.clientY);
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length > 0) {
+        const touch = e.touches[0];
+        state.pointer.x = touch.clientX;
+        state.pointer.y = touch.clientY;
+      }
+    }, { passive: true });
+
+    /**
+     * 10. MEDIAPIPE HANDS & GESTURE PINCH DETECTION
+     */
+    const videoElement = document.getElementById('inputVideo');
+    const camCanvas = document.getElementById('cameraCanvas');
+    const camCtx = camCanvas.getContext('2d');
+
+    async function initHandTrackingCamera() {
+      const notice = document.getElementById('cameraStatusNotice');
+      if (notice) {
+        notice.classList.remove('hidden');
+        notice.textContent = "⏳ Menghubungkan kamera & AI deteksi tangan...";
+      }
+
+      try {
+        if (typeof Hands === 'undefined' || typeof Camera === 'undefined') {
+          throw new Error("Library MediaPipe belum termuat.");
+        }
+
+        if (!state.handsInstance) {
+          state.handsInstance = new Hands({
+            locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`
+          });
+
+          state.handsInstance.setOptions({
+            maxNumHands: 1,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.65,
+            minTrackingConfidence: 0.6
+          });
+
+          state.handsInstance.onResults(onHandResults);
+        }
+
+        state.cameraInstance = new Camera(videoElement, {
+          onFrame: async () => {
+            if (state.cameraEnabled && state.handsInstance) {
+              await state.handsInstance.send({ image: videoElement });
+            }
+          },
+          width: 320,
+          height: 240
+        });
+
+        await state.cameraInstance.start();
+        state.cameraEnabled = true;
+        state.pointer.source = 'hand';
+
+        document.getElementById('cameraPreviewContainer').classList.remove('hidden');
+        document.getElementById('camIcon').textContent = '📹';
+        if (notice) notice.classList.add('hidden');
+
+      } catch (err) {
+        console.warn("Kamera tidak dapat diakses, beralih ke mode Mouse/Touch:", err);
+        state.cameraEnabled = false;
+        state.pointer.source = 'mouse';
+        if (notice) {
+          notice.textContent = "ℹ️ Kamera tidak tersedia/ditolak. Menggunakan mode Mouse & Layar Sentuh.";
+        }
+      }
+    }
+
+    function onHandResults(results) {
+      // Gambar preview kamera mini (mirrored)
+      camCanvas.width = 320;
+      camCanvas.height = 240;
+      camCtx.save();
+      camCtx.clearRect(0, 0, camCanvas.width, camCanvas.height);
+      camCtx.translate(camCanvas.width, 0);
+      camCtx.scale(-1, 1);
+      camCtx.drawImage(results.image, 0, 0, camCanvas.width, camCanvas.height);
+
+      const pinchIndicator = document.getElementById('pinchIndicator');
+
+      if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+        const landmarks = results.multiHandLandmarks[0];
+
+        // Gambar kerangka tangan di preview mini
+        if (typeof drawConnectors !== 'undefined' && typeof HAND_CONNECTIONS !== 'undefined') {
+          drawConnectors(camCtx, landmarks, HAND_CONNECTIONS, { color: '#38bdf8', lineWidth: 2 });
+          drawLandmarks(camCtx, landmarks, { color: '#facc15', lineWidth: 1, radius: 3 });
+        }
+
+        // Landmark 8 = Ujung Jari Telunjuk, Landmark 4 = Ujung Ibu Jari
+        const indexTip = landmarks[8];
+        const thumbTip = landmarks[4];
+
+        // Konversi koordinat kamera (mirrored) ke koordinat layar canvas utama
+        const targetX = (1 - indexTip.x) * canvas.width;
+        const targetY = indexTip.y * canvas.height;
+
+        // Smoothing gerakan pointer tangan agar stabil untuk anak SD
+        state.pointer.x += (targetX - state.pointer.x) * 0.35;
+        state.pointer.y += (targetY - state.pointer.y) * 0.35;
+        state.pointer.active = true;
+        state.pointer.source = 'hand';
+
+        // Hitung jarak Euclidean 2D antara telunjuk & ibu jari untuk deteksi PINCH
+        const dist = Math.hypot(indexTip.x - thumbTip.x, indexTip.y - thumbTip.y);
+        const PINCH_THRESHOLD = 0.055;
+
+        if (dist < PINCH_THRESHOLD) {
+          pinchIndicator.textContent = "💥 PINCH TERDETEKSI!";
+          pinchIndicator.className = "absolute bottom-1 left-1 right-1 text-center text-[10px] font-extrabold py-0.5 px-1.5 rounded-md bg-emerald-500 text-white";
+
+          if (!state.pointer.isPinching && state.pointer.pinchCooldown <= 0) {
+            state.pointer.isPinching = true;
+            state.pointer.pinchCooldown = 22; // Cegah double pop tidak sengaja
+            triggerPopAt(state.pointer.x, state.pointer.y);
+          }
+        } else {
+          state.pointer.isPinching = false;
+          pinchIndicator.textContent = "👆 Gerakkan Jari • Cubit untuk Pecahkan";
+          pinchIndicator.className = "absolute bottom-1 left-1 right-1 text-center text-[10px] font-extrabold py-0.5 px-1.5 rounded-md bg-black/65 text-white";
+        }
+      } else {
+        pinchIndicator.textContent = "✋ Tunjukkan Tangan ke Kamera";
+        pinchIndicator.className = "absolute bottom-1 left-1 right-1 text-center text-[10px] font-extrabold py-0.5 px-1.5 rounded-md bg-amber-600/85 text-white";
+      }
+
+      camCtx.restore();
+    }
+
+    function toggleCameraPreview() {
+      const wrapper = document.getElementById('cameraCanvasWrapper');
+      const btn = document.getElementById('toggleCamBtn');
+      state.cameraPreviewVisible = !state.cameraPreviewVisible;
+      if (state.cameraPreviewVisible) {
+        wrapper.classList.remove('hidden');
+        btn.textContent = 'Sembunyikan';
+      } else {
+        wrapper.classList.add('hidden');
+        btn.textContent = 'Tampilkan';
+      }
+    }
+
+    async function handleQuickCameraToggle() {
+      if (!state.cameraEnabled) {
+        await initHandTrackingCamera();
+      } else {
+        toggleCameraPreview();
+      }
+    }
+
+    /**
+     * 11. RENDERING VISUAL 3D-STYLE BALLOONS, LANGIT, AWAN & KURSOR
+     */
+    function drawCloud(cloud) {
+      ctx.save();
+      ctx.translate(cloud.x, cloud.y);
+      ctx.scale(cloud.scale, cloud.scale);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 32, 0, Math.PI * 2);
+      ctx.arc(28, -10, 38, 0, Math.PI * 2);
+      ctx.arc(62, 0, 30, 0, Math.PI * 2);
+      ctx.arc(30, 14, 28, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+
+    function drawSun() {
+      const sunX = canvas.width - 70;
+      const sunY = 70;
+      const grad = ctx.createRadialGradient(sunX, sunY, 10, sunX, sunY, 95);
+      grad.addColorStop(0, 'rgba(254, 240, 138, 0.95)');
+      grad.addColorStop(0.5, 'rgba(253, 224, 71, 0.45)');
+      grad.addColorStop(1, 'rgba(253, 224, 71, 0)');
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.arc(sunX, sunY, 95, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    function wrapTextLines(context, text, maxWidth) {
+      const words = text.split(' ');
+      const lines = [];
+      let currentLine = words[0] || '';
+
+      for (let i = 1; i < words.length; i++) {
+        const word = words[i];
+        const width = context.measureText(currentLine + ' ' + word).width;
+        if (width < maxWidth) {
+          currentLine += ' ' + word;
+        } else {
+          lines.push(currentLine);
+          currentLine = word;
+        }
+      }
+      lines.push(currentLine);
+      return lines;
+    }
+
+    function drawBalloon3D(b, time) {
+      ctx.save();
+
+      // Efek getar jika jawaban salah
+      let shakeX = 0;
+      if (b.shakeTimer > 0) {
+        shakeX = Math.sin(b.shakeTimer * 1.5) * 9;
+        b.shakeTimer--;
+      }
+
+      const drawX = b.x + shakeX;
+      const drawY = b.y;
+
+      if (b.disabled) {
+        ctx.globalAlpha = 0.45;
+      }
+
+      // 1. Tali balon bergelombang lembut
+      ctx.beginPath();
+      ctx.moveTo(drawX, drawY + b.ry + 6);
+      const wave = Math.sin(time * 0.004 + b.bobOffset) * 10;
+      ctx.quadraticCurveTo(drawX + wave, drawY + b.ry + 35, drawX - wave * 0.5, drawY + b.ry + 68);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.85)';
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+
+      // 2. Simpul ikatan bawah balon (segitiga kecil)
+      ctx.fillStyle = b.color.dark;
+      ctx.beginPath();
+      ctx.moveTo(drawX - 7, drawY + b.ry + 8);
+      ctx.lineTo(drawX + 7, drawY + b.ry + 8);
+      ctx.lineTo(drawX, drawY + b.ry - 2);
+      ctx.closePath();
+      ctx.fill();
+
+      // 3. Badan Balon 3D dengan Radial Gradient
+      const grad = ctx.createRadialGradient(
+        drawX - b.rx * 0.32,
+        drawY - b.ry * 0.32,
+        b.rx * 0.1,
+        drawX,
+        drawY,
+        b.ry * 1.05
+      );
+      grad.addColorStop(0, b.color.light);
+      grad.addColorStop(0.45, b.color.main);
+      grad.addColorStop(1, b.color.dark);
+
+      ctx.shadowColor = 'rgba(15, 23, 42, 0.22)';
+      ctx.shadowBlur = 16;
+      ctx.shadowOffsetY = 10;
+
+      ctx.fillStyle = grad;
+      ctx.beginPath();
+      ctx.ellipse(drawX, drawY, b.rx, b.ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Reset shadow untuk elemen dalam balon
+      ctx.shadowColor = 'transparent';
+
+      // 4. Kilau Cahaya Glossy (Specular Highlight)
+      ctx.save();
+      ctx.translate(drawX - b.rx * 0.36, drawY - b.ry * 0.35);
+      ctx.rotate(-Math.PI / 5);
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, b.rx * 0.16, b.ry * 0.28, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+
+      // 5. Kotak Latar Teks Jawaban agar Kontras Tinggi & Mudah Dibaca Siswa SD
+      const maxTextWidth = b.rx * 1.55;
+      const fontSize = b.rx < 70 ? 12 : (b.rx < 90 ? 14 : 16);
+      ctx.font = `800 ${fontSize}px 'Nunito', sans-serif`;
+      const lines = wrapTextLines(ctx, b.text, maxTextWidth);
+      const lineHeight = fontSize * 1.25;
+      const totalTextHeight = lines.length * lineHeight;
+
+      // Pill putih semi-transparan di tengah balon
+      const pillW = Math.min(b.rx * 1.72, maxTextWidth + 16);
+      const pillH = totalTextHeight + 14;
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.92)';
+      ctx.beginPath();
+      ctx.roundRect(drawX - pillW / 2, drawY - pillH / 2, pillW, pillH, 12);
+      ctx.fill();
+
+      // Render baris teks jawaban
+      ctx.fillStyle = '#0f172a';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      lines.forEach((line, idx) => {
+        const lineY = drawY - totalTextHeight / 2 + lineHeight * (idx + 0.5);
+        ctx.fillText(line, drawX, lineY);
+      });
+
+      ctx.restore();
+    }
+
+    function drawCustomCursor() {
+      if (!state.pointer.active || state.status !== 'PLAYING') return;
+
+      const { x, y, isPinching, source } = state.pointer;
+      ctx.save();
+      ctx.translate(x, y);
+
+      // Lingkaran bidik (Crosshair / Dart Pointer)
+      const radius = isPinching ? 14 : 22;
+      ctx.beginPath();
+      ctx.arc(0, 0, radius, 0, Math.PI * 2);
+      ctx.strokeStyle = isPinching ? '#10b981' : '#facc15';
+      ctx.lineWidth = 4;
+      ctx.stroke();
+
+      ctx.beginPath();
+      ctx.arc(0, 0, 5, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+
+      // Jika menggunakan kamera tangan, tampilkan ikon kecil penunjuk
+      if (source === 'hand') {
+        ctx.font = '20px sans-serif';
+        ctx.fillText(isPinching ? '💥' : '👆', 12, -12);
+      }
+
+      ctx.restore();
+    }
+
+    /**
+     * 12. MAIN ANIMATION LOOP (60 FPS)
+     */
+    function animate(time = 0) {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Matahari & Awan bergerak
+      drawSun();
+      state.clouds.forEach(cloud => {
+        cloud.x += cloud.speed;
+        if (cloud.x - 100 > canvas.width) {
+          cloud.x = -120;
+        }
+        drawCloud(cloud);
+      });
+
+      // Cooldown pinch gesture
+      if (state.pointer.pinchCooldown > 0) {
+        state.pointer.pinchCooldown--;
+      }
+
+      // Update & gambar balon mengambang naik-turun
+      if (state.status === 'PLAYING' || state.status === 'TRANSITION') {
+        state.balloons.forEach(b => {
+          b.bobOffset += b.bobSpeed;
+          const targetX = b.baseX + Math.cos(b.bobOffset * 0.8) * b.bobAmpX;
+          const targetY = b.baseY + Math.sin(b.bobOffset) * b.bobAmpY;
+
+          // Transisi mulus saat balon terbang masuk dari bawah layar
+          b.x += (targetX - b.x) * 0.08;
+          b.y += (targetY - b.y) * 0.08;
+
+          drawBalloon3D(b, time);
+        });
+      }
+
+      // Update & gambar riak pinch/klik
+      for (let i = state.floatingTexts.length - 1; i >= 0; i--) {
+        const r = state.floatingTexts[i];
+        r.radius += 3.5;
+        r.alpha -= 0.04;
+        if (r.alpha <= 0) {
+          state.floatingTexts.splice(i, 1);
+          continue;
+        }
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+        ctx.strokeStyle = `rgba(255, 255, 255, ${r.alpha})`;
+        ctx.lineWidth = 3;
+        ctx.stroke();
+        ctx.restore();
+      }
+
+      // Update & gambar partikel konfeti ledakan balon
+      for (let i = state.particles.length - 1; i >= 0; i--) {
+        const p = state.particles[i];
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += p.gravity;
+        p.alpha -= 0.018;
+        p.rotation += 0.1;
+
+        if (p.alpha <= 0) {
+          state.particles.splice(i, 1);
+          continue;
+        }
+
+        ctx.save();
+        ctx.globalAlpha = p.alpha;
+        ctx.translate(p.x, p.y);
+        ctx.rotate(p.rotation);
+        ctx.fillStyle = p.color;
+        if (p.shape === 'circle') {
+          ctx.beginPath();
+          ctx.arc(0, 0, p.size / 2, 0, Math.PI * 2);
+          ctx.fill();
+        } else {
+          ctx.fillRect(-p.size / 2, -p.size / 2, p.size, p.size * 0.6);
+        }
+        ctx.restore();
+      }
+
+      // Gambar kursor bidik (terutama saat mode gesture tangan)
+      drawCustomCursor();
+
+      requestAnimationFrame(animate);
+    }
+
+    // Mulai loop animasi setelah halaman dimuat penuh
+    window.onload = function () {
+      animate();
+    };
+  </script>
+</body>
+</html>
